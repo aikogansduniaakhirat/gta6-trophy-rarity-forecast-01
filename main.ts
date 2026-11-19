@@ -44,8 +44,11 @@ const Z2 = 0.6744897501960817;
 /** The release, the origin every case's elapsed-time axis shares. */
 const RELEASE_MS = Date.parse('2026-11-19T00:00:00Z');
 /** How much of a fitted log-log move survives extrapolation past the last read. */
-const DAMP_HOLDERS = 0.9;
+const DAMP_HOLDERS = 0.8;
 const DAMP_TRACKED = 0.75;
+/** How fast the holder move's damping decays with the distance carried, and its cap. */
+const HORIZON_TAU = 0.3;
+const MEDIAN_MOVE_CAP = 2;
 /** Shrinkage of a trophy's own holder trend toward its neighbours' (in reads). */
 const SHRINK_K = 5;
 /** Spread, in logit units: per sqrt of the extrapolated log-time, and a refresh's own. */
@@ -247,9 +250,14 @@ function forecastCase(c: Case): Array<{ id: number; q: number[] }> {
 
     const slope = weight * fit.slope + (1 - weight) * prior;
 
+    // A trophy's progression saturates: the log-log trend fitted over the last day cannot be
+    // carried linearly for another four, so its damping decays with the distance carried.
+    const damp = DAMP_HOLDERS / (1 + HORIZON_TAU * Math.max(0, logRatio));
+    const move = Math.max(-MEDIAN_MOVE_CAP, Math.min(MEDIAN_MOVE_CAP, damp * slope * logRatio));
+
     const holdersTarget =
       fit.lastHolders > 0
-        ? fit.lastHolders * Math.exp(DAMP_HOLDERS * slope * logRatio)
+        ? fit.lastHolders * Math.exp(move)
         : (raw / 100) * last.players_tracked;
     const centreRate = clampPct((holdersTarget / trackedTarget) * 100);
     const centre = logit(centreRate);
